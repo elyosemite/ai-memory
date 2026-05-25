@@ -410,7 +410,7 @@ impl AiMemoryServer {
         // instead of erroring the whole query — losing semantic
         // re-ranking is acceptable, denying the user any search isn't.
         let hits = if let Some(embedder) = &self.embedder {
-            match embedder.embed(&args.query).await {
+            match embedder.embed_query(&args.query).await {
                 Ok(qv) => {
                     self.reader
                         .hybrid_search(

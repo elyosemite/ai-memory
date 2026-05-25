@@ -79,11 +79,7 @@ impl GoogleEmbedder {
             content: GeminiContent {
                 parts: vec![GeminiPart { text: &prepared }],
             },
-            task_type: if self.embedding_v2 {
-                None
-            } else {
-                task_type
-            },
+            task_type: if self.embedding_v2 { None } else { task_type },
             output_dimensionality: Some(self.dim),
         };
 
@@ -121,7 +117,10 @@ struct GeminiEmbedRequest<'a> {
     content: GeminiContent<'a>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "taskType")]
     task_type: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "outputDimensionality")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        rename = "outputDimensionality"
+    )]
     output_dimensionality: Option<u32>,
 }
 
@@ -164,8 +163,7 @@ impl Embedder for GoogleEmbedder {
     }
 
     async fn embed_document(&self, text: &str) -> LlmResult<Vec<f32>> {
-        self.embed_with_task(text, Some("RETRIEVAL_DOCUMENT"))
-            .await
+        self.embed_with_task(text, Some("RETRIEVAL_DOCUMENT")).await
     }
 
     async fn embed_query(&self, text: &str) -> LlmResult<Vec<f32>> {

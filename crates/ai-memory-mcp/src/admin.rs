@@ -962,7 +962,7 @@ async fn handle_embed(
                 continue;
             }
         };
-        let vec = match embedder.embed(&md.body).await {
+        let vec = match embedder.embed_document(&md.body).await {
             Ok(v) => v,
             Err(e) => {
                 warn!(path = %cand.path, error = %e, "embed: provider call failed");

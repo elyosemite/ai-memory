@@ -348,7 +348,7 @@ impl Wiki {
         // transaction" (basic-memory #763 lesson): no fire-and-forget
         // background embedding.
         if let Some(embedder) = &self.embedder {
-            match embedder.embed(&body).await {
+            match embedder.embed_document(&body).await {
                 Ok(vec) => {
                     let bytes = f32_vec_to_bytes(&vec);
                     self.writer

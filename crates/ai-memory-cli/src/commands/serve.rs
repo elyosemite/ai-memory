@@ -376,7 +376,7 @@ async fn run_embedding_backfill(
                 continue;
             }
         };
-        let vec = match embedder.embed(&md.body).await {
+        let vec = match embedder.embed_document(&md.body).await {
             Ok(vec) => vec,
             Err(e) => {
                 failed += 1;
@@ -429,9 +429,14 @@ async fn configure_embedder(
         info!("AI_MEMORY_EMBEDDING_PROVIDER unset; hybrid search disabled (FTS5-only)");
         return Ok((wiki, None));
     };
+    let embedder = build_embedder(cfg).context("building embedder from config")?;
     let mismatch = store
         .reader
-        .embedding_meta_for_mismatch(cfg.provider.name().into(), cfg.model.clone(), cfg.dim)
+        .embedding_meta_for_mismatch(
+            embedder.provider().into(),
+            embedder.model().into(),
+            embedder.dim(),
+        )
         .await?;
     if !mismatch.is_empty() {
         anyhow::bail!(
@@ -440,7 +445,6 @@ async fn configure_embedder(
             mismatch
         );
     }
-    let embedder = build_embedder(cfg).context("building embedder from config")?;
     info!(
         provider = embedder.provider(),
         model = embedder.model(),

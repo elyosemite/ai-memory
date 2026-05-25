@@ -375,13 +375,9 @@ impl Config {
                 .voyage_api_key
                 .clone()
                 .ok_or_else(|| LlmError::NotConfigured("VOYAGE_API_KEY".into()))?,
-            EmbedderChoice::Google => self
-                .runtime_env
-                .gemini_api_key
-                .clone()
-                .ok_or_else(|| {
-                    LlmError::NotConfigured("GEMINI_API_KEY or GOOGLE_API_KEY".into())
-                })?,
+            EmbedderChoice::Google => self.runtime_env.gemini_api_key.clone().ok_or_else(|| {
+                LlmError::NotConfigured("GEMINI_API_KEY or GOOGLE_API_KEY".into())
+            })?,
         };
         Ok(Some(EmbedderConfig {
             provider,
@@ -514,5 +510,28 @@ mod tests {
         assert_eq!(cfg.log_level, "debug");
         assert!(!cfg.maintenance.enabled);
         assert_eq!(cfg.maintenance.lint_interval_secs, 3600);
+    }
+
+    #[test]
+    fn gemini_embedding_provider_uses_google_defaults() {
+        let mut cfg = Config {
+            embedding_provider: Some("gemini".into()),
+            runtime_env: RuntimeEnv {
+                gemini_api_key: Some(SecretString::from("test-key")),
+                ..RuntimeEnv::default()
+            },
+            ..Config::default()
+        };
+
+        let embedder = cfg.embedder_config().unwrap().unwrap();
+        assert_eq!(embedder.provider, EmbedderChoice::Google);
+        assert_eq!(embedder.model, ai_memory_llm::GOOGLE_DEFAULT_EMBED_MODEL);
+        assert_eq!(embedder.dim, 768);
+
+        cfg.embedding_provider = Some("google".into());
+        assert_eq!(
+            cfg.embedder_config().unwrap().unwrap().provider,
+            EmbedderChoice::Google
+        );
     }
 }

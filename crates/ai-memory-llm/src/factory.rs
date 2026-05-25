@@ -12,8 +12,8 @@ use crate::GeminiProvider;
 use crate::OpenAiCompatProvider;
 use crate::OpenAiProvider;
 use crate::embedding::{Embedder, OpenAiEmbedder, VoyageEmbedder};
-use crate::google::GoogleEmbedder;
 use crate::error::{LlmError, LlmResult};
+use crate::google::GoogleEmbedder;
 use crate::provider::LlmProvider;
 
 /// Four providers ship in v1.

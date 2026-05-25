@@ -306,7 +306,7 @@ async fn measure_recall(
     let mut hits = 0_usize;
     for (query, expected) in PROBES {
         let results = if let Some(emb) = &embedder {
-            let qv = emb.embed(query).await.expect("embed query");
+            let qv = emb.embed_query(query).await.expect("embed query");
             store
                 .reader
                 .hybrid_search(

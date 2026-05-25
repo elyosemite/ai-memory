@@ -31,7 +31,7 @@
 | Claude Desktop | MCP-only | Uses `mcp-remote`; no lifecycle hooks. |
 | OpenClaw | Supported | MCP config + native plugin lifecycle hooks. |
 | LLM providers | Supported | Anthropic, OpenAI, Gemini, and OpenAI-compatible endpoints. |
-| Embedding providers | Supported | OpenAI and Voyage. |
+| Embedding providers | Supported | OpenAI, Voyage, and Google Gemini. |
 
 ## What it is
 
@@ -271,8 +271,8 @@ Recommended defaults:
 | `openai-compat` | no default | OpenRouter, Ollama, vLLM, LM Studio, and other compatible endpoints. |
 
 Embeddings are optional and separate from the LLM provider. Set
-`AI_MEMORY_EMBEDDING_PROVIDER=openai` or `voyage` when you want vector
-reranking in addition to FTS5 + graph-neighbor retrieval.
+`AI_MEMORY_EMBEDDING_PROVIDER=openai`, `voyage`, `google`, or `gemini` when
+you want vector reranking in addition to FTS5 + graph-neighbor retrieval.
 
 See [`docs/install.md#llm-provider-tiers`](docs/install.md#llm-provider-tiers)
 for env vars and Ollama/OpenRouter examples, and
