@@ -1107,4 +1107,83 @@ mod tests {
         assert_ne!(ws, state.workspace_id);
         assert_ne!(proj, state.project_id);
     }
+
+    /// A git worktree must resolve to the same project as the main
+    /// working directory — both share the same repository identity.
+    #[tokio::test]
+    async fn worktree_resolves_to_same_project_as_main_repo() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_state(&tmp).await;
+
+        // Create a real git repo inside the temp dir.
+        let main_dir = tmp.path().join("my-project");
+        std::fs::create_dir_all(&main_dir).unwrap();
+        let repo = git2::Repository::init(&main_dir).unwrap();
+
+        // git2 requires at least one commit before creating a worktree.
+        let sig = repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("test", "test@test.com").unwrap());
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // Create a worktree in a sibling directory.
+        let wt_dir = tmp.path().join("my-project-feature-branch");
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        // Create a branch for the worktree to check out.
+        let branch = repo.branch("feature-branch", &head, false).unwrap();
+        repo.worktree(
+            "feature-branch",
+            &wt_dir,
+            Some(git2::WorktreeAddOptions::new().reference(Some(&branch.into_reference()))),
+        )
+        .unwrap();
+
+        let main_cwd = main_dir.to_str().unwrap();
+        let wt_cwd = wt_dir.to_str().unwrap();
+
+        let (ws_main, proj_main) = resolve_project_ids(&state, Some(main_cwd), None, None)
+            .await
+            .unwrap();
+        let (ws_wt, proj_wt) = resolve_project_ids(&state, Some(wt_cwd), None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(ws_main, ws_wt, "same workspace");
+        assert_eq!(
+            proj_main, proj_wt,
+            "worktree must resolve to same project as main repo"
+        );
+    }
+
+    /// A directory that is NOT inside a git repo must still resolve
+    /// via basename(cwd), preserving the existing behaviour.
+    #[tokio::test]
+    async fn non_git_dir_falls_back_to_basename() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_state(&tmp).await;
+
+        // Create a plain directory (no .git).
+        let plain_dir = tmp.path().join("plain-project");
+        std::fs::create_dir_all(&plain_dir).unwrap();
+        let cwd = plain_dir.to_str().unwrap();
+
+        let (_, proj) = resolve_project_ids(&state, Some(cwd), None, None)
+            .await
+            .unwrap();
+
+        // Must NOT be the server-default scratch project.
+        assert_ne!(proj, state.project_id);
+
+        // Resolve a second time with a different basename to prove
+        // they produce distinct projects (basename-based).
+        let other_dir = tmp.path().join("other-project");
+        std::fs::create_dir_all(&other_dir).unwrap();
+        let (_, proj2) = resolve_project_ids(&state, Some(other_dir.to_str().unwrap()), None, None)
+            .await
+            .unwrap();
+        assert_ne!(proj, proj2, "different basenames → different projects");
+    }
 }
