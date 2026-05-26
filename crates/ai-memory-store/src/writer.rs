@@ -95,6 +95,8 @@ pub(crate) enum WriteCmd {
         reply: oneshot::Sender<StoreResult<()>>,
     },
     DeleteStalePageEmbeddings {
+        workspace_id: WorkspaceId,
+        project_id: Option<ProjectId>,
         provider: String,
         model: String,
         dim: u32,
@@ -310,7 +312,7 @@ impl WriterHandle {
         rx.await.map_err(|_| StoreError::WriterClosed)?
     }
 
-    /// Remove embedding rows whose triple does not match the configured provider/model/dim.
+    /// Remove embedding rows in a workspace/project scope whose triple does not match the configured provider/model/dim.
     ///
     /// Used when re-embedding after a model migration (e.g. Gemini → OpenRouter).
     ///
@@ -318,12 +320,16 @@ impl WriterHandle {
     /// Returns [`StoreError::WriterClosed`] or propagates SQL errors.
     pub async fn delete_stale_page_embeddings(
         &self,
+        workspace_id: WorkspaceId,
+        project_id: Option<ProjectId>,
         provider: String,
         model: String,
         dim: u32,
     ) -> StoreResult<u64> {
         let (tx, rx) = oneshot::channel();
         self.send(WriteCmd::DeleteStalePageEmbeddings {
+            workspace_id,
+            project_id,
             provider,
             model,
             dim,
@@ -627,12 +633,21 @@ fn worker_loop(mut conn: Connection, mut rx: mpsc::Receiver<WriteCmd>) {
                 send_or_warn(reply, result, "store_embeddings");
             }
             WriteCmd::DeleteStalePageEmbeddings {
+                workspace_id,
+                project_id,
                 provider,
                 model,
                 dim,
                 reply,
             } => {
-                let result = ops::delete_stale_page_embeddings(&mut conn, &provider, &model, dim);
+                let result = ops::delete_stale_page_embeddings(
+                    &mut conn,
+                    &workspace_id,
+                    project_id.as_ref(),
+                    &provider,
+                    &model,
+                    dim,
+                );
                 send_or_warn(reply, result, "delete_stale_page_embeddings");
             }
             WriteCmd::PurgeProject {

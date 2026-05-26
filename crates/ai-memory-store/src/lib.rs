@@ -744,6 +744,8 @@ mod tests {
         let n = store
             .writer
             .delete_stale_page_embeddings(
+                ws,
+                Some(proj),
                 "openai".into(),
                 "openai/text-embedding-3-small".into(),
                 1536,
@@ -761,21 +763,5 @@ mod tests {
             .await
             .unwrap();
         assert!(mismatch.is_empty());
-    }
-
-    #[test]
-    fn v07_migration_metadata_for_fork_repair() {
-        let tmp = TempDir::new().unwrap();
-        let db_path = tmp.path().join("repair-meta.db");
-        let mut conn = Connection::open(&db_path).unwrap();
-        crate::migrations::run_to(&mut conn, 7).unwrap();
-        let (name, checksum): (String, String) = conn
-            .query_row(
-                "SELECT name, checksum FROM refinery_schema_history WHERE version = 7",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        eprintln!("V7_NAME={name} V7_CHECKSUM={checksum}");
     }
 }

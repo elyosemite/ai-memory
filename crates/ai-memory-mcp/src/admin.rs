@@ -968,23 +968,6 @@ async fn embed_project_pages(
     let model = embedder.model().to_string();
     let dim = embedder.dim();
 
-    if reembed && !dry_run {
-        let purged = state
-            .writer
-            .delete_stale_page_embeddings(provider.clone(), model.clone(), dim)
-            .await
-            .map_err(|e| internal_err(e.to_string()))?;
-        if purged > 0 {
-            info!(
-                purged,
-                provider = %provider,
-                model = %model,
-                dim,
-                "embed: purged stale page_embeddings before re-embed"
-            );
-        }
-    }
-
     let candidates = state
         .reader
         .decay_candidates(ws, proj)
@@ -1035,10 +1018,6 @@ async fn embed_project_pages(
                 continue;
             }
         };
-        // Gentle pacing for provider rate limits (OpenRouter free tier, etc.).
-        if !dry_run {
-            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-        }
         pending.push(EmbeddingWrite {
             page_id: cand.id,
             vector_bytes: f32_vec_to_bytes(&vec),
@@ -1089,49 +1068,56 @@ async fn handle_embed(
 
     let mut totals = EmbedCounts::default();
 
-    if req.reembed && !req.dry_run {
-        let purged = state
-            .writer
-            .delete_stale_page_embeddings(provider.clone(), model.clone(), dim)
-            .await
-            .map_err(|e| internal_err(e.to_string()))?;
-        info!(purged, provider = %provider, model = %model, "purged stale page_embeddings before re-embed");
-    }
-
     if req.all_projects {
-        let summaries = state
+        if let Some(ws) = state
             .reader
-            .list_projects_with_stats()
+            .find_workspace(req.workspace.clone())
             .await
-            .map_err(|e| internal_err(e.to_string()))?;
-        for summary in summaries
-            .into_iter()
-            .filter(|p| p.workspace_name == req.workspace)
+            .map_err(|e| internal_err(e.to_string()))?
         {
-            let (ws, proj) =
-                resolve_ws_proj(&state, &summary.workspace_name, &summary.project_name).await?;
-            let partial = embed_project_pages(
-                &state,
-                &embedder,
-                ws,
-                proj,
-                req.reembed,
-                req.dry_run,
-            )
-            .await?;
-            totals.absorb(partial);
+            if req.reembed && !req.dry_run {
+                let purged = state
+                    .writer
+                    .delete_stale_page_embeddings(ws, None, provider.clone(), model.clone(), dim)
+                    .await
+                    .map_err(|e| internal_err(e.to_string()))?;
+                info!(purged, provider = %provider, model = %model, "purged stale page_embeddings before workspace re-embed");
+            }
+
+            let summaries = state
+                .reader
+                .list_projects_with_stats()
+                .await
+                .map_err(|e| internal_err(e.to_string()))?;
+            for summary in summaries
+                .into_iter()
+                .filter(|p| p.workspace_name == req.workspace)
+            {
+                let Some(proj) = state
+                    .reader
+                    .find_project(ws, summary.project_name.clone())
+                    .await
+                    .map_err(|e| internal_err(e.to_string()))?
+                else {
+                    continue;
+                };
+                let partial =
+                    embed_project_pages(&state, &embedder, ws, proj, req.reembed, req.dry_run)
+                        .await?;
+                totals.absorb(partial);
+            }
         }
     } else {
         let (ws, proj) = resolve_ws_proj(&state, &req.workspace, &req.project).await?;
-        totals = embed_project_pages(
-            &state,
-            &embedder,
-            ws,
-            proj,
-            req.reembed,
-            req.dry_run,
-        )
-        .await?;
+        if req.reembed && !req.dry_run {
+            let purged = state
+                .writer
+                .delete_stale_page_embeddings(ws, Some(proj), provider.clone(), model.clone(), dim)
+                .await
+                .map_err(|e| internal_err(e.to_string()))?;
+            info!(purged, provider = %provider, model = %model, "purged stale page_embeddings before project re-embed");
+        }
+        totals = embed_project_pages(&state, &embedder, ws, proj, req.reembed, req.dry_run).await?;
     }
 
     let report = EmbedReport {
