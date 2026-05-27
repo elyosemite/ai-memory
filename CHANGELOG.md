@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
-- Docker release publishing now reuses the prebuilt Linux x86_64 release
-  artifact for the amd64 image and smoke-tests both amd64 and arm64 images
-  after assembling the multi-arch manifest.
+- Docker release publishing now builds Linux x86_64 and aarch64 artifacts once,
+  reuses those artifacts for Docker images, and smoke-tests both amd64 and arm64
+  images after assembling the multi-arch manifest.
+- The AUR `ai-memory-bin` package now supports aarch64 using the prebuilt Linux
+  aarch64 release artifact.
 - Docker source builds now use the vendored Tailwind CSS artifact, avoiding
   cross-architecture Tailwind CLI cache collisions during multi-arch releases.
 

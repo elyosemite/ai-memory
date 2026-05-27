@@ -135,7 +135,7 @@ For native Arch installs, use the AUR packages. They install
 user-level systemd units.
 
 ```bash
-yay -S ai-memory-bin    # prebuilt Linux x86_64 binary
+yay -S ai-memory-bin    # prebuilt Linux x86_64/aarch64 binary
 yay -S ai-memory        # builds from source
 ```
 

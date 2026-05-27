@@ -118,7 +118,7 @@ with `install-hooks --apply`.
 ### Package choice
 
 ```bash
-yay -S ai-memory-bin    # prebuilt Linux x86_64 binary, fastest install
+yay -S ai-memory-bin    # prebuilt Linux x86_64/aarch64 binary, fastest install
 yay -S ai-memory        # builds from source, works on x86_64 and aarch64
 ```
 

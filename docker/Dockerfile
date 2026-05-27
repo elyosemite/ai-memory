@@ -7,9 +7,9 @@
 #          owns /data. CA certificates included for outgoing HTTPS (LLM
 #          providers in M6+).
 #
-# The default final target builds the binary from source. Release automation can
-# target `runtime-prebuilt-amd64` after downloading the native release artifact,
-# avoiding a second amd64 compile in the Docker publish job.
+# The default final target builds the binary from source. Release automation and
+# CI can target the prebuilt runtime stages after downloading native release
+# artifacts, avoiding duplicate Rust compiles in Docker jobs.
 
 FROM rust:1.95-slim-bookworm AS builder
 WORKDIR /work
@@ -53,7 +53,11 @@ ENTRYPOINT ["/usr/local/bin/ai-memory"]
 CMD ["serve", "--transport", "http", "--bind", "0.0.0.0:49374", "--enable-web"]
 
 FROM runtime-base AS runtime-prebuilt-amd64
-COPY dist/docker/ai-memory-linux-x86_64/ai-memory /usr/local/bin/ai-memory
+COPY --chmod=0755 dist/docker/ai-memory-linux-x86_64/ai-memory /usr/local/bin/ai-memory
+USER ai-memory
+
+FROM runtime-base AS runtime-prebuilt-arm64
+COPY --chmod=0755 dist/docker/ai-memory-linux-aarch64/ai-memory /usr/local/bin/ai-memory
 USER ai-memory
 
 FROM runtime-base AS runtime-source
