@@ -303,3 +303,124 @@ async fn move_project_same_workspace_rejected() {
     .await;
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+/// The move carries the source page's existing embedding over instead of
+/// recomputing it. Proven by overwriting the source embedding with a
+/// recognisable marker vector: if the move re-embedded, the destination would
+/// hold the synthetic bag-of-words vector, not the marker.
+#[tokio::test]
+async fn move_project_carries_source_embedding() {
+    let tmp = TempDir::new().unwrap();
+    let store = Store::open(tmp.path()).unwrap();
+    let embedder: std::sync::Arc<dyn ai_memory_llm::Embedder> =
+        std::sync::Arc::new(ai_memory_llm::SyntheticEmbedder::new(8));
+    let wiki = Wiki::new(tmp.path(), store.writer.clone())
+        .unwrap()
+        .with_embedder(embedder.clone());
+    let db_path = store.db_path().to_path_buf();
+    let state = AdminState {
+        writer: store.writer.clone(),
+        reader: store.reader.clone(),
+        wiki,
+        llm: None,
+        embedder: Some(embedder),
+        provider_health: ai_memory_llm::ProviderHealth::default(),
+        decay_params: DecayParams::default(),
+        data_dir: tmp.path().to_path_buf(),
+        db_path,
+        bind: "127.0.0.1:0".to_string(),
+        bootstrap_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        token_pepper: None,
+    };
+
+    // Seed source page (gets a synthetic embedding on write).
+    seed_page(
+        &store,
+        &state.wiki,
+        "src",
+        "proj",
+        "notes/a.md",
+        "hello world embed",
+    )
+    .await;
+
+    let src_ws = store
+        .reader
+        .find_workspace("src".to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let src_proj = store
+        .reader
+        .find_project(src_ws, "proj".to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let src = store
+        .reader
+        .load_embeddings(
+            src_ws,
+            src_proj,
+            "synthetic".to_string(),
+            "bag-of-words-v1".to_string(),
+            8,
+        )
+        .await
+        .unwrap();
+    assert_eq!(src.len(), 1, "source page must have an embedding to carry");
+
+    // Overwrite with a recognisable marker vector.
+    let marker: Vec<f32> = vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0];
+    store
+        .writer
+        .store_embedding(
+            src[0].id,
+            ai_memory_store::f32_vec_to_bytes(&marker),
+            "synthetic".to_string(),
+            "bag-of-words-v1".to_string(),
+            8,
+        )
+        .await
+        .unwrap();
+
+    let resp = post(
+        state,
+        "/admin/move-project",
+        json!({ "from_workspace": "src", "project": "proj", "to_workspace": "dst", "confirm": true }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // The destination page must carry the MARKER (not a recomputed vector).
+    let dst_ws = store
+        .reader
+        .find_workspace("dst".to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let dst_proj = store
+        .reader
+        .find_project(dst_ws, "proj".to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let dst = store
+        .reader
+        .load_embeddings(
+            dst_ws,
+            dst_proj,
+            "synthetic".to_string(),
+            "bag-of-words-v1".to_string(),
+            8,
+        )
+        .await
+        .unwrap();
+    assert_eq!(dst.len(), 1, "dest page must carry an embedding");
+    for (got, want) in dst[0].vector.iter().zip(marker.iter()) {
+        assert!(
+            (got - want).abs() < 1e-4,
+            "carried embedding must equal the source marker (not a recompute); got {:?}",
+            dst[0].vector
+        );
+    }
+}

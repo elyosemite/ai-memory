@@ -129,6 +129,17 @@ impl Wiki {
         self.embedder.as_ref()
     }
 
+    /// Return a clone-friendly handle with the embedder detached, so
+    /// `write_page` skips the per-page `embed_document` call. Used by
+    /// bulk copy paths (e.g. `move-project`) that carry the source page's
+    /// existing embedding over verbatim instead of recomputing it — the
+    /// caller is then responsible for `store_embedding` on the new page.
+    #[must_use]
+    pub fn without_embedder(mut self) -> Self {
+        self.embedder = None;
+        self
+    }
+
     /// Borrow the git adapter (for callers wiring auto-commit).
     #[must_use]
     pub fn git(&self) -> &GitAdapter {

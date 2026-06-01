@@ -1694,8 +1694,46 @@ async fn handle_move_project(
         Err(e) => return internal_err(e.to_string()),
     };
 
-    // COPY each page through the canonical write path so sanitization, link
-    // re-resolution, FTS upsert (and admission/git-mirror on deploy) all fire.
+    // Carry the source page embeddings over verbatim instead of recomputing
+    // them — embedding is the dominant per-page cost of a bulk move. Writes go
+    // through an embedder-less Wiki so `write_page` never re-embeds; we then
+    // store each source vector against the new page id. Only embeddings
+    // computed with the CURRENTLY configured embedder ({provider,model,dim})
+    // are loaded (load_embeddings filters on them), so the "one model per
+    // index" invariant holds; any page lacking a current-model embedding is
+    // simply copied without one (backfill later via `ai-memory embed`).
+    let copy_wiki = state.wiki.clone().without_embedder();
+    let mut src_embeddings: std::collections::HashMap<String, Vec<u8>> =
+        std::collections::HashMap::new();
+    let embed_meta: Option<(String, String, u32)> = if let Some(embedder) = &state.embedder {
+        let (provider, model, dim) = (
+            embedder.provider().to_string(),
+            embedder.model().to_string(),
+            embedder.dim(),
+        );
+        match state
+            .reader
+            .load_embeddings(src_ws, src_proj, provider.clone(), model.clone(), dim)
+            .await
+        {
+            Ok(rows) => {
+                for e in rows {
+                    src_embeddings.insert(e.path.to_string(), f32_vec_to_bytes(&e.vector));
+                }
+                Some((provider, model, dim))
+            }
+            Err(e) => {
+                warn!(error = %e, "move-project: failed to load source embeddings; copies land without vectors");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // COPY each page through the (embedder-less) write path so sanitization,
+    // link re-resolution, FTS upsert (and admission/git-mirror on deploy) all
+    // fire — minus the per-page embed, which we carry over below.
     let mut pages_copied = 0u64;
     let mut pages_skipped: Vec<String> = Vec::new();
     for s in &summaries {
@@ -1719,8 +1757,7 @@ async fn handle_move_project(
                 continue;
             }
         };
-        if let Err(e) = state
-            .wiki
+        let new_page_id = match copy_wiki
             .write_page(WritePageRequest {
                 workspace_id: dst_ws,
                 project_id: dst_proj,
@@ -1737,8 +1774,26 @@ async fn handle_move_project(
             })
             .await
         {
+            Ok(pid) => pid,
             // ANY copy failure aborts BEFORE the purge — the source survives.
-            return internal_err(format!("copy of {} failed: {e}", s.path));
+            Err(e) => return internal_err(format!("copy of {} failed: {e}", s.path)),
+        };
+        // Carry the source embedding over (skip the re-embed) when the source
+        // had one for the current model.
+        if let (Some((provider, model, dim)), Some(bytes)) =
+            (&embed_meta, src_embeddings.get(&s.path))
+            && let Err(e) = state
+                .writer
+                .store_embedding(
+                    new_page_id,
+                    bytes.clone(),
+                    provider.clone(),
+                    model.clone(),
+                    *dim,
+                )
+                .await
+        {
+            warn!(path = %s.path, error = %e, "move-project: failed to carry embedding; page copied without it");
         }
         pages_copied += 1;
     }
