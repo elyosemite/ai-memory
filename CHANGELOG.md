@@ -27,7 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   missing, not when the disk source of truth is corrupt or unreadable ([#63]).
 - `openai-oauth` now speaks the current ChatGPT/Codex responses stream format
   for bootstrap/consolidation requests and avoids sending the unsupported
-  `max_output_tokens` field on that endpoint.
+  `max_output_tokens` field on that endpoint ([#64]).
+- `ai-memory write-page` now resolves an omitted `--project` through the same
+  current-project heuristic as `read-page` and `search`, preventing writes from
+  landing in `scratch` while the read-back targets the cwd-derived project
+  ([#66]).
 
 ## [0.8.1] - 2026-05-30
 
